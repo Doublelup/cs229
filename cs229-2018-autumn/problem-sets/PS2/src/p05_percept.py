@@ -16,6 +16,10 @@ def initial_state():
     """
 
     # *** START CODE HERE ***
+    betas = []
+    x = []
+    state = {'betas': betas, 'x': x}
+    return state
     # *** END CODE HERE ***
 
 
@@ -33,6 +37,12 @@ def predict(state, kernel, x_i):
         Returns the prediction (i.e 0 or 1)
     """
     # *** START CODE HERE ***
+    theta_i_dot_x_ip = 0
+    betas = state['betas']
+    x = state['x']
+    for i in range(len(betas)):
+        theta_i_dot_x_ip += betas[i] * kernel(x_i, x[i])
+    return sign(theta_i_dot_x_ip)
     # *** END CODE HERE ***
 
 
@@ -47,6 +57,15 @@ def update_state(state, kernel, learning_rate, x_i, y_i):
         y_i: A 0 or 1 indicating the label for a single instance
     """
     # *** START CODE HERE ***
+    theta_i_dot_x_ip = 0
+    betas = state['betas']
+    x = state['x']
+    for i in range(len(betas)):
+        theta_i_dot_x_ip += betas[i] * kernel(x_i, x[i])
+    h_theta_i = sign(theta_i_dot_x_ip)
+    beta_i = learning_rate * (y_i - h_theta_i)
+    betas.append(beta_i)
+    x.append(x_i)
     # *** END CODE HERE ***
 
 

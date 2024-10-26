@@ -87,7 +87,7 @@ def plot(x, y, theta, save_path, correction=1.0):
     # Plot dataset
     plt.figure()
     plt.plot(x[y == 1, -2], x[y == 1, -1], 'bx', linewidth=2)
-    plt.plot(x[y == 0, -2], x[y == 0, -1], 'go', linewidth=2)
+    plt.plot(x[y == -1, -2], x[y == -1, -1], 'go', linewidth=2)
 
     # Plot decision boundary (found by solving for theta^T x = 0)
     x1 = np.arange(min(x[:, -2]), max(x[:, -2]), 0.01)
@@ -97,7 +97,10 @@ def plot(x, y, theta, save_path, correction=1.0):
     # Add labels and save to disk
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.savefig(save_path)
+    if save_path:
+        plt.savefig(save_path)
+    else:
+        plt.show()
 
 
 def plot_contour(predict_fn):
