@@ -28,10 +28,25 @@ def main(is_semi_supervised, trial_num):
     # *** START CODE HERE ***
     # (1) Initialize mu and sigma by splitting the m data points uniformly at random
     # into K groups, then calculating the sample mean and covariance for each group
+    m, n = x.shape
+    selector = np.random.randint(0, K, m)
+    mu = np.empty((K, n))
+    sigma = np.empty((K, n, n))
+    for i in range(0, K):
+        sub = x[selector == i]
+        sub_m, _ = sub.shape
+        if sub_m == 0:
+            mu[i] = np.zeros((n,))
+            sigma[i] = np.diag(np.ones((n,)))
+        else:
+            mu[i] = np.mean(sub, axis=0)
+            sigma[i] = 1 / sub_m * (sub - mu[i]).T @ (sub - mu[i])
     # (2) Initialize phi to place equal probability on each Gaussian
     # phi should be a numpy array of shape (K,)
+    phi = 1 / K * np.ones((K,))
     # (3) Initialize the w values to place equal probability on each Gaussian
     # w should be a numpy array of shape (m, K)
+    w = 1 / K * np.ones((m, K))
     # *** END CODE HERE ***
 
     if is_semi_supervised:
@@ -74,16 +89,40 @@ def run_em(x, w, phi, mu, sigma):
     it = 0
     ll = prev_ll = None
     while it < max_iter and (prev_ll is None or np.abs(ll - prev_ll) >= eps):
-        pass  # Just a placeholder for the starter code
+        # pass  # Just a placeholder for the starter code
         # *** START CODE HERE
         # (1) E-step: Update your estimates in w
+        m, n = x.shape
+        det_sigma = np.linalg.det(sigma) # shape (k,)
+        x_sub_mu = x - mu.reshape((K, 1, n)) # shape (k, m, n)
+        exp_partition = np.exp(-0.5 * np.einsum('kmn, knl, kml->km', x_sub_mu, np.linalg.inv(sigma), x_sub_mu)) # shape (k, m)
+        w = np.einsum('k, km, k->mk', det_sigma ** -0.5, exp_partition, phi) #shape (m, k)
+        w /= w.sum(axis=1)[:, None]
+
         # (2) M-step: Update the model parameters phi, mu, and sigma
+        denominator = np.einsum('mk->k', w)
+        phi = 1/m * denominator
+        # calculate mu
+        mu = np.einsum('mk, mn, k->kn', w, x, denominator ** -1)
+        # calculate sigma
+        sigma = np.einsum('ik, kim, kin, k->kmn', w, x_sub_mu, x_sub_mu, denominator ** -1) # shape(k, n, n)
+
         # (3) Compute the log-likelihood of the data to check for convergence.
         # By log-likelihood, we mean `ll = sum_x[log(sum_z[p(x|z) * p(z)])]`.
         # We define convergence by the first iteration where abs(ll - prev_ll) < eps.
         # Hint: For debugging, recall part (a). We showed that ll should be monotonically increasing.
+        prev_ll = ll
+        x_sub_mu = x - mu.reshape((K, 1, n))
+        exp_partition = np.exp(-0.5 * np.einsum('kmn, knl, kml->km', x_sub_mu, np.linalg.inv(sigma), x_sub_mu))
+        det_sigma = np.linalg.det(sigma)
+        p = ((2 * np.pi) ** (-n/2)) * np.einsum('k, km, k->m', det_sigma ** -0.5, exp_partition, phi)
+        ll = np.sum(np.log(p))
+        if prev_ll and ll < prev_ll:
+            print('error')
+            print(prev_ll, ' ', ll)
+        it += 1
         # *** END CODE HERE ***
-
+    print(it)
     return w
 
 
@@ -115,16 +154,52 @@ def run_semi_supervised_em(x, x_tilde, z, w, phi, mu, sigma):
     # See below for explanation of the convergence criterion
     it = 0
     ll = prev_ll = None
+    m, n = x.shape
+    m_tilde, _ = x_tilde.shape
+    w_tilde = np.zeros((m_tilde, K))
+    w_tilde[np.arange(m_tilde), z.reshape(m_tilde, ).astype(int)] = alpha
     while it < max_iter and (prev_ll is None or np.abs(ll - prev_ll) >= eps):
-        pass  # Just a placeholder for the starter code
+        # pass  # Just a placeholder for the starter code
         # *** START CODE HERE ***
         # (1) E-step: Update your estimates in w
+        det_sigma = np.linalg.det(sigma) # shape (k,)
+        x_sub_mu = x - mu.reshape((K, 1, n)) # shape (k, m, n)
+        x_tilde_sub_mu = x_tilde - mu.reshape((K, 1, n))
+        exp_partition = np.exp(-0.5 * np.einsum('kmn, knl, kml->km', x_sub_mu, np.linalg.inv(sigma), x_sub_mu)) # shape (k, m)
+        w = np.einsum('k, km, k->mk', det_sigma ** -0.5, exp_partition, phi) #shape (m, k)
+        w /= w.sum(axis=1)[:, None]
         # (2) M-step: Update the model parameters phi, mu, and sigma
+        # calculate phi
+        denominator = np.einsum('mk->k', w) + np.einsum('mk->k', w_tilde)
+        phi = (1 / (m + alpha * m_tilde)) * denominator
+        # calculate mu
+        partition1 = np.einsum('mk, mn->kn', w, x)
+        partition2 = np.einsum('mk, mn->kn', w_tilde, x_tilde)
+        mu = np.einsum('kn, k->kn', partition1+partition2, denominator ** -1)
+        # calculate sigma
+        partition1 = np.einsum('ik, kim, kin->kmn', w, x_sub_mu, x_sub_mu) # shape(k, n, n)
+        partition2 = np.einsum('ik, kim, kin->kmn', w_tilde, x_tilde_sub_mu, x_tilde_sub_mu)
+        sigma = np.einsum('kmn, k->kmn', partition1 + partition2, denominator ** -1)
         # (3) Compute the log-likelihood of the data to check for convergence.
         # Hint: Make sure to include alpha in your calculation of ll.
         # Hint: For debugging, recall part (a). We showed that ll should be monotonically increasing.
+        prev_ll = ll
+        x_sub_mu = x - mu.reshape((K, 1, n))
+        exp_partition = np.exp(-0.5 * np.einsum('kmn, knl, kml->km', x_sub_mu, np.linalg.inv(sigma), x_sub_mu))
+        det_sigma = np.linalg.det(sigma)
+        p0 = ((2 * np.pi) ** (-n/2)) * np.einsum('k, km, k->mk', det_sigma ** -0.5, exp_partition, phi)
+        p1 = p0.sum(axis=1)
+        x_tilde_sub_mu = x_tilde - mu.reshape((K, 1, n))
+        exp_partition = np.exp(-0.5 * np.einsum('kmn, knl, kml->km', x_tilde_sub_mu, np.linalg.inv(sigma), x_tilde_sub_mu))
+        p0 = ((2 * np.pi) ** (-n/2)) * np.einsum('k, km, k->mk', det_sigma ** -0.5, exp_partition, phi)
+        p2 = p0[np.arange(m_tilde), z.reshape(m_tilde,).astype(int)]
+        ll = np.sum(np.log(p1)) + alpha * np.sum(np.log(p2))
+        if prev_ll and ll < prev_ll:
+            print('error')
+            print(prev_ll, ' ', ll)
+        it += 1
         # *** END CODE HERE ***
-
+    print(it)
     return w
 
 
@@ -191,11 +266,11 @@ if __name__ == '__main__':
     # Run NUM_TRIALS trials to see how different initializations
     # affect the final predictions with and without supervision
     for t in range(NUM_TRIALS):
-        main(is_semi_supervised=False, trial_num=t)
+        # main(is_semi_supervised=False, trial_num=t)
 
         # *** START CODE HERE ***
         # Once you've implemented the semi-supervised version,
         # uncomment the following line.
         # You do not need to add any other lines in this code block.
-        # main(with_supervision=True, trial_num=t)
+        main(is_semi_supervised=True, trial_num=t)
         # *** END CODE HERE ***

@@ -94,6 +94,6 @@ class LocallyWeightedLinearRegression(LinearModel):
 
 
 if __name__ == '__main__':
-    main(tau=5e-1,
+    main(tau=5e-2,
          train_path='../data/ds5_train.csv',
          eval_path='../data/ds5_valid.csv')
